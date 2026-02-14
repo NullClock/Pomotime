@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Breathing Pomodoro</title>
+
+  <style>
+    :root {
+      --hue: 330;
+    }
+
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-tap-highlight-color: rgba(0,0,0,0);
+      tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden !important;
+      background: hsl(var(--hue), 90%, 60%);
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      font-family: system-ui, sans-serif;
+    }
+
+    .container {
+      position: relative;
+      width:  min(82vmin, 380px);
+      height: min(82vmin, 380px);
+      max-width: 92vw;
+      max-height: 92vw;
+    }
+
+    .circle {
+      position: absolute;
+      inset: 0;
+      background: #000;
+      border-radius: 50%;
+      z-index: 2;
+    }
+
+    .breathing {
+      animation: breathe 5.5s ease-in-out infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { transform: scale(1.00); }
+      50%      { transform: scale(1.14); }
+    }
+
+    .ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: max(3px, 0.9vmin) solid rgba(0,0,0,0.9);
+      opacity: 0;
+      pointer-events: none;
+      animation: pulse 4.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    .ring:nth-child(2) { animation-delay: 0.7s; }
+    .ring:nth-child(3) { animation-delay: 1.4s; }
+    .ring:nth-child(4) { animation-delay: 2.1s; }
+
+    @keyframes pulse {
+      0%   { transform: scale(0.3); opacity: 0.8; }
+      40%  { opacity: 1; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+
+    .paused .breathing,
+    .paused .ring {
+      animation-play-state: paused;
+    }
+
+    /* ── Break styling ── */
+    .break-mode {
+      --hue: 340;
+    }
+
+    .break-mode .breathing {
+      animation-duration: 8s;
+    }
+
+    .break-mode.long-break .breathing {
+      animation-duration: 10s;
+      animation-timing-function: ease-in-out;
+    }
+
+    .break-mode .ring {
+      border-color: rgba(0,0,0,0.65);
+      animation-duration: 6.5s;
+    }
+
+    /* ── Time display ── */
+    .time {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      z-index: 10;
+      color: white;
+      font-weight: bold;
+      font-size: clamp(4.2rem, 17vw, 8rem);
+      line-height: 1;
+      text-shadow: 0 0.25rem 1.4rem rgba(0,0,0,0.85);
+      pointer-events: none;
+    }
+
+    .paused .time::before {
+      content: "PAUSED";
+      position: absolute;
+      top: -22%;
+      font-size: clamp(2rem, 9vw, 3.8rem);
+      opacity: 0.92;
+      text-shadow: 0 0 2rem #000;
+    }
+
+    @media (min-width: 768px) {
+      .container {
+        width: min(62vmin, 460px);
+        height: min(62vmin, 460px);
+      }
+      .time {
+        font-size: clamp(7rem, 13vw, 10rem);
+      }
+    }
+  </style>
+</head>
+<body class="paused">
+
+  <div class="container">
+    <div class="circle breathing"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+
+    <div class="time">25:00</div>
+  </div>
+
+  <!-- Soft chime when break starts -->
+  <audio id="chime" preload="auto">
+    <source src="https://assets.codepen.io/438780/notification-bell-soft-chime.mp3" type="audio/mpeg">
+    Your browser does not support the audio element.
+  </audio>
+
+  <script>
+    const body = document.body;
+    const timeEl = document.querySelector('.time');
+    const chimeAudio = document.getElementById('chime');
+
+    chimeAudio.volume = 0.55;
+
+    let timeLeft       = 25 * 60;
+    let isWork         = true;
+    let isRunning      = false;
+    let interval       = null;
+    let completedWorks = 0;
+
+    function formatTime(s) {
+      const m = Math.floor(s / 60);
+      const ss = s % 60;
+      return `${m}:${ss.toString().padStart(2,'0')}`;
+    }
+
+    function updateDisplay() {
+      timeEl.textContent = formatTime(timeLeft);
+      body.classList.toggle('break-mode', !isWork);
+      body.classList.toggle('long-break', !isWork && completedWorks % 2 === 0 && completedWorks > 0);
+    }
+
+    function playChime() {
+      chimeAudio.currentTime = 0;
+      chimeAudio.play().catch(() => {});
+    }
+
+    function startTimer() {
+      if (isRunning) return;
+      isRunning = true;
+      body.classList.remove('paused');
+
+      interval = setInterval(() => {
+        timeLeft--;
+        updateDisplay();
+
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          isRunning = false;
+
+          if (isWork) {
+            completedWorks++;
+            isWork = false;
+            const isLongBreak = (completedWorks % 2 === 0);
+            timeLeft = isLongBreak ? 10 * 60 : 5 * 60;
+            playChime();
+          } else {
+            isWork = true;
+            timeLeft = 25 * 60;
+          }
+
+          updateDisplay();
+          body.style.background = isWork
+            ? 'hsl(var(--hue), 90%, 60%)'
+            : 'hsl(var(--hue), 80%, 45%)';
+
+          setTimeout(startTimer, 900);
+        }
+      }, 1000);
+    }
+
+    function pauseTimer() {
+      clearInterval(interval);
+      isRunning = false;
+      body.classList.add('paused');
+    }
+
+    function toggle() {
+      isRunning ? pauseTimer() : startTimer();
+    }
+
+    body.addEventListener('click', toggle);
+    body.addEventListener('touchend', toggle); // extra good mobile support
+
+    updateDisplay();
+  </script>
+</body>
+</html>
